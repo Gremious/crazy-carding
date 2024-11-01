@@ -3,12 +3,17 @@ use std::sync::LazyLock;
 pub static CLIENT: LazyLock<reqwest::Client> = LazyLock::new(reqwest::Client::new);
 
 pub mod skryfall;
+pub mod ygoprodeck;
 use skryfall as mtg;
+use ygoprodeck as ygo;
 
 #[tokio::main]
 async fn main() {
-	let mtg_card = mtg::get_random_card().await.unwrap();
-	print_img(&mtg_card);
+	// simple_logger::SimpleLogger::new().env().init().unwrap();
+	// let mtg_card = mtg::get_random_card().await.unwrap();
+	// print_img(&mtg_card);
+	let ygo_card = ygo::get_random_card().await.unwrap();
+	print_img(&ygo_card);
 }
 
 pub fn print_img(img: &image::DynamicImage) {

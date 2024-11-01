@@ -6,7 +6,7 @@ pub async fn get_random_card() -> anyhow::Result<image::DynamicImage> {
 			("format", "image"),
 			("version", "png"),
 		])
-		.header(reqwest::header::USER_AGENT, "yank-images")
+		.header(reqwest::header::USER_AGENT, "crazy-carding")
 		.header(reqwest::header::ACCEPT, "*/*")
 		.send().await?
 		.error_for_status()?
