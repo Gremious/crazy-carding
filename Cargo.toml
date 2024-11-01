@@ -4,3 +4,12 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+reqwest = "0.12"
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+tokio = { version = "1", features = ["full"] }
+bytes = "1"
+tap = "1"
+regex = "1"
+image = "0.25"
+viuer = "0.9.1"
