@@ -35,3 +35,40 @@ pub fn get_ppi(img: image::DynamicImage) -> u32 {
 
 	(img.width() as f64 / inch_width).round() as u32
 }
+
+#[derive(serde::Deserialize)]
+struct Symbology {
+	data: Vec<CardSymbol>,
+}
+
+#[derive(serde::Deserialize)]
+struct CardSymbol {
+	// symbol: String,
+	svg_uri: String,
+	// english: String,
+}
+
+pub async fn download_svgs() -> anyhow::Result<()> {
+	// https://api.scryfall.com/symbology
+	let items = CLIENT.get("https://api.scryfall.com/symbology")
+		.header(reqwest::header::USER_AGENT, "crazy-carding")
+		.header(reqwest::header::ACCEPT, "*/*")
+		.send().await?
+		.error_for_status()?
+		.json::<Symbology>().await?;
+
+	for item in items.data {
+		let bytes = CLIENT.get(&item.svg_uri)
+			.header(reqwest::header::USER_AGENT, "crazy-carding")
+			.header(reqwest::header::ACCEPT, "*/*")
+			.send().await?
+			.error_for_status()?
+			.bytes().await?;
+
+		std::fs::write(format!("resources/svg/mtg/{}", item.svg_uri.rsplit_once("/").unwrap().1), bytes)?;
+		tokio::time::sleep(std::time::Duration::from_millis(125)).await;
+	}
+
+	Ok(())
+}
+

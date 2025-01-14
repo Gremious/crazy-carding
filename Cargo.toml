@@ -25,3 +25,4 @@ imageproc = { git = "https://github.com/image-rs/imageproc.git", branch = "maste
 ab_glyph = "0.2"
 itertools = "0.14.0"
 resvg = "0.44"
+sugars = "3.0.1"
