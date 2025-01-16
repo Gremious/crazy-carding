@@ -2,18 +2,20 @@ use std::{collections::VecDeque, sync::LazyLock};
 
 pub static CLIENT: LazyLock<reqwest::Client> = LazyLock::new(reqwest::Client::new);
 
+pub mod prelude;
 pub mod hearthstone;
 pub mod skryfall;
 pub mod ygoprodeck;
 pub mod text;
 
+use ygoprodeck as ygo;
+use skryfall as mtg;
 use hearthstone as hs;
+
+use prelude::*;
 use image::{DynamicImage, ExtendedColorType};
 use rand::Rng;
-use skryfall as mtg;
-use tap::{Pipe, Tap};
 use tokio::sync::Mutex;
-use ygoprodeck as ygo;
 
 pub static CONFIG: LazyLock<Config> = LazyLock::new(Config::load);
 pub static STATE: LazyLock<Mutex<State>> = LazyLock::new(|| Mutex::new(State::load_or_default()));

@@ -159,7 +159,7 @@ pub fn text_to_png(keyword: &str, explanation: &str) -> DynamicImage {
 
 pub fn render_svg(size: u32) -> DynamicImage {
 	let options = resvg::usvg::Options::default();
-	let tree = resvg::usvg::Tree::from_str(include_str!("../../resources/svg/mtg/T.svg"), &options).unwrap();
+	let tree = resvg::usvg::Tree::from_str(include_str!("../../resources/mtg/svg/T.svg"), &options).unwrap();
 
 	let scale = size as f32 / 100.0;
 	let transform = resvg::tiny_skia::Transform::from_scale(scale, scale);

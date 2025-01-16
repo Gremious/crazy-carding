@@ -1,4 +1,6 @@
 pub mod render;
+
+use super::mtg;
 use std::{collections::HashMap, sync::LazyLock};
 use sugars::hmap;
 
@@ -55,69 +57,143 @@ impl TextItem {
 // flavor-words (Mark of Chaos Ascendant)
 // ability words (Delirium)
 // but notably not keyword-abilities (Cumulative Upkeep)
-pub fn make_mtg_paragraph(text: &str) -> MtgText {
+//
+// Technically, this fails e.g. "(Foo ( hehe :) smiley face ) bar)" but whatver
+// It's good enough for 99% of cases
+pub fn make_mtg_paragraph(text: &str) -> anyhow::Result<MtgText> {
+	enum FirstPassItem {
+		Text(String),
+		Symbol(String),
+	}
+
 	let mut ret = Vec::new();
-	let mut text_items = Vec::new();
-	let chars = text.chars();
-	let mut phrase: Option<TextItem> = None;
+	let mut first_pass = Vec::new();
 
-	// WIP, for now, just parentheses
-	// todo: if text beings with special phrase, push to italics, then skip to the rest..l.
+	let mut phrase = None;
+	let mut symbol = None;
+	let mut in_symbol = false;
 
-	for c in chars {
+	for c in text.chars() {
 		match c {
-			'(' => {
-				match phrase {
-					Some(_) => {
-						text_items.push(phrase.take().unwrap());
-						phrase = Some(TextItem::Italic(String::from(c)));
-					},
-					None => {
-						phrase = Some(TextItem::Italic(String::from(c)));
-					},
+			'{' => {
+				in_symbol = true;
+
+				let phrase = phrase.take();
+				if let Some(phrase) = phrase {
+					first_pass.push(FirstPassItem::Text(phrase));
 				}
 			},
-			')' => {
-				match &mut phrase {
-					Some(ref mut p) => {
-						p.push_char(c);
-						text_items.push(phrase.take().unwrap());
-					},
-					None => {
-						// Shouldn't happen but who knows
-						phrase = Some(TextItem::Regular(String::from(c)));
-					},
+			'}' => {
+				in_symbol = false;
+
+				let symbol = symbol.take();
+				if let Some(symbol) = symbol {
+					first_pass.push(FirstPassItem::Symbol(symbol));
 				}
 			},
 			_ => {
-				match &mut phrase {
-					Some(ref mut p) => {
-						p.push_char(c);
-					},
-					None => {
-						phrase = Some(TextItem::Regular(String::from(c)));
-					},
+				if in_symbol {
+					if let Some(symbol) = symbol.as_mut() {
+						symbol.push(c);
+					} else {
+						symbol = Some(String::from(c));
+					}
+				} else {
+					if let Some(phrase) = phrase.as_mut() {
+						phrase.push(c);
+					} else {
+						phrase = Some(String::from(c));
+					}
 				}
 			},
 		}
 	}
 
-	// Parsing '{X}' like symbols
-	// I should load the svgs in a lazy static map
-	// there aren't that many, so I think it's fine to render the tree as well?
-	// if it's slow for some reason, I can be lazy per symbol or something
-	for item in text_items.iter_mut() {
+	if let Some(phrase) = phrase.take() {
+		first_pass.push(FirstPassItem::Text(phrase));
+	}
+
+	// is_italic = paren_count > 0;
+	let mut paren_count = 0;
+	let mut phrase: Option<String> = None;
+
+	for item in first_pass {
 		match item {
-			// TextItem::Bold(_) => todo!(),
-			TextItem::Regular(text) => {
-				if let Some(i) = text.find("{") {
+			FirstPassItem::Text(text) => {
+				for c in text.chars() {
+					match c {
+						'(' => {
+							if paren_count == 0 {
+								let curr = phrase.take();
+								if let Some(phrase) = curr {
+									ret.push(TextItem::Regular(phrase));
+								}
 
+								phrase = Some(String::from(c));
+							} else {
+								if let Some(phrase) = phrase.as_mut() {
+									phrase.push(c);
+								}
+							}
+
+							paren_count += 1;
+						},
+						')' => {
+							match paren_count {
+								0 => {
+									// Smiley face :)
+									let phrase = phrase.get_or_insert(String::new());
+									phrase.push(c);
+								},
+								1 => {
+									paren_count -= 1;
+
+									if paren_count == 0 {
+										let curr = phrase.take();
+										if let Some(mut phrase) = curr {
+											phrase.push(c);
+											ret.push(TextItem::Italic(phrase));
+										}
+									}
+								},
+								_ => {
+									paren_count -= 1;
+
+									let phrase = phrase.get_or_insert(String::new());
+									phrase.push(c);
+								},
+							}
+						},
+						_ => {
+							let phrase = phrase.get_or_insert(String::new());
+							phrase.push(c);
+						},
+					}
 				}
 			},
-			TextItem::Italic(text) => todo!(),
-			TextItem::Symbol(_) => unreachable!(),
+			FirstPassItem::Symbol(symbol) => {
+				let phrase = phrase.take();
+
+				if let Some(p) = phrase {
+					if paren_count > 0 {
+						ret.push(TextItem::Italic(p));
+					} else {
+						ret.push(TextItem::Regular(p));
+					}
+				}
+
+				ret.push(TextItem::Symbol(symbol));
+			},
 		}
 	}
 
-	ret
+	if let Some(phrase) = phrase.take() {
+		if paren_count > 0 {
+			ret.push(TextItem::Italic(phrase));
+		} else {
+			ret.push(TextItem::Regular(phrase));
+		}
+	}
+
+	Ok(ret)
 }
