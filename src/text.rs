@@ -63,14 +63,11 @@ pub fn make_mtg_paragraph(text: &str) -> anyhow::Result<MtgText> {
 	if let (Some(start), Some(end)) = (open_paren, closed_paren) {
 		maybe_italic = Some((start, end));
 	}
-	log::debug!("maybe_italic: {maybe_italic:?}");
 
 	let mut maybe_phrase = None;
 
 	for (i, c) in text.chars().enumerate() {
-		log::debug!("pphrase: {maybe_phrase:?}");
 		let in_italics = maybe_italic.is_some_and(|(it_start, it_end)| (it_start..it_end).contains(&i));
-		log::debug!("in it: {in_italics}");
 
 		let Some(ref mut phrase) = maybe_phrase else {
 			match c {
