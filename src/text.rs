@@ -41,15 +41,6 @@ impl TextItem {
 			TextItem::Symbol(x) => todo!(),
 		}
 	}
-
-	fn push_char(&mut self, c: char) {
-		match self {
-			// TextItem::Bold(x) => x.push(c),
-			TextItem::Regular(x) => x.push(c),
-			TextItem::Italic(x) => x.push(c),
-			TextItem::Symbol(_) => {},
-		}
-	}
 }
 
 // Things that are italic:
@@ -58,142 +49,78 @@ impl TextItem {
 // ability words (Delirium)
 // but notably not keyword-abilities (Cumulative Upkeep)
 //
-// Technically, this fails e.g. "(Foo ( hehe :) smiley face ) bar)" but whatver
-// It's good enough for 99% of cases
+// Maybe worth looking into
+// https://docs.rs/parse-hyperlinks/latest/src/parse_hyperlinks/lib.rs.html#41
+// Or nom parsing in general
+// It seems be quite nice for stuff like this
 pub fn make_mtg_paragraph(text: &str) -> anyhow::Result<MtgText> {
-	enum FirstPassItem {
-		Text(String),
-		Symbol(String),
-	}
-
 	let mut ret = Vec::new();
-	let mut first_pass = Vec::new();
 
-	let mut phrase = None;
-	let mut symbol = None;
-	let mut in_symbol = false;
+	let mut maybe_italic = None;
 
-	for c in text.chars() {
-		match c {
-			'{' => {
-				in_symbol = true;
+	let open_paren = text.find(|c| c == '(');
+	let closed_paren = text.rfind(|c| c == ')');
+	if let (Some(start), Some(end)) = (open_paren, closed_paren) {
+		maybe_italic = Some((start, end));
+	}
+	log::debug!("maybe_italic: {maybe_italic:?}");
 
-				let phrase = phrase.take();
-				if let Some(phrase) = phrase {
-					first_pass.push(FirstPassItem::Text(phrase));
-				}
-			},
-			'}' => {
-				in_symbol = false;
+	let mut maybe_phrase = None;
 
-				let symbol = symbol.take();
-				if let Some(symbol) = symbol {
-					first_pass.push(FirstPassItem::Symbol(symbol));
-				}
-			},
-			_ => {
-				if in_symbol {
-					if let Some(symbol) = symbol.as_mut() {
-						symbol.push(c);
+	for (i, c) in text.chars().enumerate() {
+		log::debug!("pphrase: {maybe_phrase:?}");
+		let in_italics = maybe_italic.is_some_and(|(it_start, it_end)| (it_start..it_end).contains(&i));
+		log::debug!("in it: {in_italics}");
+
+		let Some(ref mut phrase) = maybe_phrase else {
+			match c {
+				'{' => {
+					maybe_phrase = Some(TextItem::Symbol(String::new()));
+				},
+				_ => {
+					maybe_phrase = if in_italics {
+						Some(TextItem::Italic(c.to_string()))
 					} else {
-						symbol = Some(String::from(c));
-					}
+						Some(TextItem::Regular(c.to_string()))
+					};
+				},
+			};
+			continue;
+		};
+
+		if c == '{' {
+			match phrase {
+				TextItem::Regular(_) | TextItem::Italic(_) => {
+					ret.push(maybe_phrase.take().unwrap());
+					maybe_phrase = Some(TextItem::Symbol(String::new()));
+					continue;
+				},
+				// Too funky, just trust
+				TextItem::Symbol(s) => s.push(c),
+			}
+		}
+
+		match (phrase, in_italics) {
+			(TextItem::Regular(_), true) => {
+				ret.push(maybe_phrase.take().unwrap());
+				maybe_phrase = Some(TextItem::Italic(c.to_string()));
+			},
+			(TextItem::Regular(s), false) => s.push(c),
+			(TextItem::Italic(s), true) => s.push(c),
+			(TextItem::Italic(_), false) => {
+				ret.push(maybe_phrase.take().unwrap());
+				maybe_phrase = Some(TextItem::Regular(c.to_string()));
+			},
+			(TextItem::Symbol(s), _) => {
+				if c == '}' {
+					ret.push(maybe_phrase.take().unwrap());
 				} else {
-					if let Some(phrase) = phrase.as_mut() {
-						phrase.push(c);
-					} else {
-						phrase = Some(String::from(c));
-					}
+					s.push(c);
 				}
 			},
-		}
-	}
-
-	if let Some(phrase) = phrase.take() {
-		first_pass.push(FirstPassItem::Text(phrase));
-	}
-
-	// is_italic = paren_count > 0;
-	let mut paren_count = 0;
-	let mut phrase: Option<String> = None;
-
-	for item in first_pass {
-		match item {
-			FirstPassItem::Text(text) => {
-				for c in text.chars() {
-					match c {
-						'(' => {
-							if paren_count == 0 {
-								let curr = phrase.take();
-								if let Some(phrase) = curr {
-									ret.push(TextItem::Regular(phrase));
-								}
-
-								phrase = Some(String::from(c));
-							} else {
-								if let Some(phrase) = phrase.as_mut() {
-									phrase.push(c);
-								}
-							}
-
-							paren_count += 1;
-						},
-						')' => {
-							match paren_count {
-								0 => {
-									// Smiley face :)
-									let phrase = phrase.get_or_insert(String::new());
-									phrase.push(c);
-								},
-								1 => {
-									paren_count -= 1;
-
-									if paren_count == 0 {
-										let curr = phrase.take();
-										if let Some(mut phrase) = curr {
-											phrase.push(c);
-											ret.push(TextItem::Italic(phrase));
-										}
-									}
-								},
-								_ => {
-									paren_count -= 1;
-
-									let phrase = phrase.get_or_insert(String::new());
-									phrase.push(c);
-								},
-							}
-						},
-						_ => {
-							let phrase = phrase.get_or_insert(String::new());
-							phrase.push(c);
-						},
-					}
-				}
-			},
-			FirstPassItem::Symbol(symbol) => {
-				let phrase = phrase.take();
-
-				if let Some(p) = phrase {
-					if paren_count > 0 {
-						ret.push(TextItem::Italic(p));
-					} else {
-						ret.push(TextItem::Regular(p));
-					}
-				}
-
-				ret.push(TextItem::Symbol(symbol));
-			},
-		}
-	}
-
-	if let Some(phrase) = phrase.take() {
-		if paren_count > 0 {
-			ret.push(TextItem::Italic(phrase));
-		} else {
-			ret.push(TextItem::Regular(phrase));
 		}
 	}
 
 	Ok(ret)
 }
+
